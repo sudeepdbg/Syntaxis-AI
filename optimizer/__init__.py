@@ -30,6 +30,21 @@ from .transforms import (
     TransformPipeline,
     SmartCrusher,
     CacheAligner,
+    CrossTurnDeduper,
+    LossyKompressor,
+)
+from .relevance import (
+    BM25Scorer,
+    HybridScorer,
+    create_scorer,
+    embedding_available,
+)
+from .providers import (
+    ProviderAdapter,
+    Provider,
+    AnthropicAdapter,
+    OpenAIAdapter,
+    BedrockAdapter,
 )
 from .observability import (
     get_otel_metrics,
@@ -59,6 +74,19 @@ __all__ = [
     "TransformPipeline",
     "SmartCrusher",
     "CacheAligner",
+    "CrossTurnDeduper",
+    "LossyKompressor",
+    # Relevance
+    "BM25Scorer",
+    "HybridScorer",
+    "create_scorer",
+    "embedding_available",
+    # Providers
+    "ProviderAdapter",
+    "Provider",
+    "AnthropicAdapter",
+    "OpenAIAdapter",
+    "BedrockAdapter",
     # Observability
     "get_otel_metrics",
     "configure_otel_metrics",
