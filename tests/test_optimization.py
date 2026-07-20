@@ -16,7 +16,8 @@ def test_compress_reduces_tokens_on_large_output():
         {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": large_output}]},
     ]
 
-    # Override default conservative settings to force compression on this short test
+    # FIX: The default CompressConfig protects the last 4 messages and skips user messages.
+    # Since this test only has 4 messages, we must override these defaults to force compression.
     config = CompressConfig(
         compress_user_messages=True,  # Allow compressing the user/tool_result message
         protect_recent=0,             # Don't protect any messages from compression
