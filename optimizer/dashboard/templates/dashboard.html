@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>optimizer // dashboard</title>
+<style>
+  :root {
+    --bg:#0b0d10; --bg-2:#111418; --bg-3:#171b21;
+    --fg:#d8dde3; --fg-dim:#7a828c; --fg-faint:#4a5159;
+    --accent:#7ee787; --warn:#e3b341; --err:#f47067; --info:#58a6ff;
+    --border:#262b33;
+    --mono: ui-monospace,"Cascadia Mono","JetBrains Mono","SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font-family:var(--mono);font-size:13px;line-height:1.5}
+  a{color:var(--info);text-decoration:none} a:hover{text-decoration:underline}
+  .shell{max-width:1400px;margin:0 auto;padding:20px 24px 60px}
+  header{display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:20px}
+  header h1{font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;margin:0}
+  header h1 .prompt{color:var(--accent)}
+  header .meta{color:var(--fg-dim);font-size:12px}
+  header .meta .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:middle;box-shadow:0 0 6px var(--accent)}
+  header .meta .dot.off{background:var(--fg-faint);box-shadow:none}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);margin-bottom:20px}
+  .card{background:var(--bg-2);padding:14px 16px}
+  .card .label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-dim);margin-bottom:8px}
+  .card .value{font-size:22px;font-weight:600;color:var(--fg);font-variant-numeric:tabular-nums}
+  .card .sub{font-size:11px;color:var(--fg-dim);margin-top:4px}
+  .card .value.good{color:var(--accent)}
+  section{margin-bottom:24px}
+  section h2{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-dim);margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+  section h2 .count{color:var(--fg-faint);margin-left:8px}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);font-size:12px;vertical-align:top}
+  th{color:var(--fg-dim);font-weight:500;text-transform:uppercase;font-size:10px;letter-spacing:.1em;background:var(--bg-3)}
+  tbody tr:hover{background:var(--bg-2)}
+  td.num{text-align:right} td.dim{color:var(--fg-dim)} td.good{color:var(--accent)} td.bad{color:var(--err)}
+  .tag{display:inline-block;padding:1px 6px;border:1px solid var(--border);font-size:10px;color:var(--fg-dim);margin-right:3px;letter-spacing:.04em}
+  .tag.cache{border-color:var(--info);color:var(--info)}
+  .spark{display:inline-block;width:120px;height:20px;vertical-align:middle}
+  .spark polyline{fill:none;stroke:var(--accent);stroke-width:1.2}
+  .empty{padding:30px;text-align:center;color:var(--fg-faint);font-style:italic;border:1px dashed var(--border)}
+  footer{margin-top:30px;padding-top:12px;border-top:1px solid var(--border);color:var(--fg-faint);font-size:11px;display:flex;justify-content:space-between}
+  footer button{background:transparent;color:var(--fg-dim);border:1px solid var(--border);padding:3px 10px;font-family:var(--mono);font-size:11px;cursor:pointer}
+  footer button:hover{color:var(--fg);border-color:var(--fg-dim)}
+  @media (max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <h1><span class="prompt">&gt;</span> optimizer <span style="color:var(--fg-faint)">//</span> dashboard</h1>
+    <div class="meta">
+      <span class="dot" id="conn-dot"></span>
+      <span id="conn-label">connecting</span>
+      <span style="margin-left:14px;color:var(--fg-faint)">uptime <span id="uptime">—</span></span>
+    </div>
+  </header>
+  <div class="grid">
+    <div class="card"><div class="label">session requests</div><div class="value" id="s-requests">0</div><div class="sub">lifetime: <span id="l-requests">0</span></div></div>
+    <div class="card"><div class="label">tokens saved</div><div class="value good" id="s-saved">0</div><div class="sub">lifetime: <span id="l-saved">0</span></div></div>
+    <div class="card"><div class="label">savings ratio</div><div class="value" id="s-ratio">0%</div><div class="sub">lifetime: <span id="l-ratio">0%</span></div></div>
+    <div class="card"><div class="label">cache hit rate</div><div class="value" id="s-cache">0%</div><div class="sub"><svg class="spark" id="spark" viewBox="0 0 120 20" preserveAspectRatio="none"></svg></div></div>
+  </div>
+  <section>
+    <h2>recent compressions <span class="count" id="req-count">(0)</span></h2>
+    <div id="requests-wrap"><div class="empty">no compressions yet. wire up <code>compress(...)</code>.</div></div>
+  </section>
+  <footer>
+    <div>token optimizer · local dashboard · <span id="ts">—</span></div>
+    <div><button id="btn-reset">reset session</button> <button id="btn-refresh">refresh</button></div>
+  </footer>
+</div>
+<script>
+(()=>{
+  "use strict";
+  const $=(id)=>document.getElementById(id);
+  const fmt=(n)=>n.toLocaleString("en-US");
+  const pct=(r)=>(r*100).toFixed(1)+"%";
+  const ts=(t)=>new Date(t*1000).toLocaleTimeString("en-GB");
+  const recent=[]; const savingsSeries=[]; const MAX_SERIES=60;
+  function setConn(ok){$("conn-dot").classList.toggle("off",!ok);$("conn-label").textContent=ok?"live":"reconnecting"}
+  function formatUptime(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);if(h)return`${h}h ${m}m`;if(m)return`${m}m ${sec}s`;return`${sec}s`}
+  function renderStats(snap){
+    $("s-requests").textContent=fmt(snap.session.requests);
+    $("l-requests").textContent=fmt(snap.lifetime.requests);
+    $("s-saved").textContent=fmt(snap.session.tokens_saved);
+    $("l-saved").textContent=fmt(snap.lifetime.tokens_saved);
+    $("s-ratio").textContent=pct(snap.session.savings_ratio);
+    $("l-ratio").textContent=pct(snap.lifetime.savings_ratio);
+    $("s-cache").textContent=pct(snap.session.cache_hit_rate);
+    $("uptime").textContent=formatUptime(snap.uptime_s);
+  }
+  function renderTable(events){
+    if(!events.length){$("requests-wrap").innerHTML='<div class="empty">no compressions yet.</div>';$("req-count").textContent="(0)";return}
+    $("req-count").textContent=`(${events.length})`;
+    const rows=events.slice().reverse().map(e=>{
+      const ratio=e.tokens_before>0?e.tokens_saved/e.tokens_before:0;
+      const cls=ratio>0.5?"good":ratio>0?"":"bad";
+      const tags=(e.transforms||[]).map(t=>`<span class="tag">${t}</span>`).join("");
+      const cacheTag=e.cache_hit_rate>0?`<span class="tag cache">cache ${(e.cache_hit_rate*100).toFixed(0)}%</span>`:"";
+      return`<tr><td class="dim">${ts(e.timestamp)}</td><td>${e.model}</td><td class="num">${fmt(e.tokens_before)}</td><td class="num">${fmt(e.tokens_after)}</td><td class="num ${cls}">${fmt(e.tokens_saved)}</td><td class="num ${cls}">${pct(ratio)}</td><td>${tags}${cacheTag}</td><td class="dim">${e.latency_ms?e.latency_ms.toFixed(0)+"ms":"—"}</td></tr>`;
+    }).join("");
+    $("requests-wrap").innerHTML=`<table><thead><tr><th>time</th><th>model</th><th class="num">in</th><th class="num">out</th><th class="num">saved</th><th class="num">ratio</th><th>transforms</th><th>latency</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  function renderSpark(){
+    const svg=$("spark");
+    if(savingsSeries.length<2){svg.innerHTML="";return}
+    const w=120,h=20,max=Math.max(...savingsSeries,0.01),step=w/(savingsSeries.length-1);
+    const pts=savingsSeries.map((v,i)=>`${(i*step).toFixed(1)},${(h-(v/max)*h).toFixed(1)}`).join(" ");
+    svg.innerHTML=`<polyline points="${pts}"/>`;
+  }
+  function pushEvent(e){
+    recent.push(e); if(recent.length>50)recent.shift();
+    const ratio=e.tokens_before>0?e.tokens_saved/e.tokens_before:0;
+    savingsSeries.push(ratio); if(savingsSeries.length>MAX_SERIES)savingsSeries.shift();
+    renderTable(recent); renderSpark();
+  }
+  async function fetchSnapshot(){
+    try{const r=await fetch("/api/stats");const snap=await r.json();renderStats(snap);recent.length=0;snap.recent.forEach(pushEvent);setConn(true)}catch(err){setConn(false)}
+  }
+  function connectSSE(){
+    const es=new EventSource("/api/stream");
+    es.onopen=()=>setConn(true);
+    es.onerror=()=>setConn(false);
+    es.onmessage=(msg)=>{try{const{type,payload}=JSON.parse(msg.data);if(type==="snapshot"){renderStats(payload);recent.length=0;payload.recent.forEach(pushEvent)}else if(type==="event"){pushEvent(payload)}}catch(_){}};
+    return es;
+  }
+  fetchSnapshot(); connectSSE();
+  $("btn-refresh").onclick=fetchSnapshot;
+  $("btn-reset").onclick=async()=>{if(!confirm("Reset session?"))return;await fetch("/api/reset",{method:"POST"});await fetchSnapshot()};
+  setInterval(fetchSnapshot,15000);
+  $("ts").textContent=new Date().toLocaleString("en-GB");
+})();
+</script>
+</body>
+</html>
