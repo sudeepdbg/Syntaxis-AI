@@ -16,12 +16,11 @@ def test_compress_reduces_tokens_on_large_output():
         {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": large_output}]},
     ]
 
-    # The default profile protects the last 4 messages and skips user messages.
-    # We must override this to actually compress the tool_result in this short conversation.
+    # Override default conservative settings to force compression on this short test
     config = CompressConfig(
-        compress_user_messages=True,
-        protect_recent=0,
-        min_tokens_to_compress=100,
+        compress_user_messages=True,  # Allow compressing the user/tool_result message
+        protect_recent=0,             # Don't protect any messages from compression
+        min_tokens_to_compress=100,   # Lower the threshold so it triggers
     )
 
     result = compress(messages, model="claude-sonnet-4-6", config=config)
