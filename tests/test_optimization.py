@@ -8,7 +8,7 @@ from optimizer.relevance.bm25 import BM25Scorer
 def test_compress_reduces_tokens_on_large_output():
     """Verify that large tool outputs are compressed and tokens are saved."""
     large_output = "def foo():\n    return 42\n" + ("# filler line\n" * 2000)
-    
+
     messages = [
         {"role": "system", "content": "You are a helpful coding assistant."},
         {"role": "user", "content": "Read main.py and find the bug."},
@@ -16,10 +16,18 @@ def test_compress_reduces_tokens_on_large_output():
         {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": large_output}]},
     ]
 
-    result = compress(messages, model="claude-sonnet-4-6")
+    # The default profile protects the last 4 messages and skips user messages.
+    # We must override this to actually compress the tool_result in this short conversation.
+    config = CompressConfig(
+        compress_user_messages=True,
+        protect_recent=0,
+        min_tokens_to_compress=100,
+    )
+
+    result = compress(messages, model="claude-sonnet-4-6", config=config)
 
     assert result.tokens_before > 0
-    assert result.tokens_saved > 0, "Expected tokens to be saved, but none were."
+    assert result.tokens_saved > 0, f"Expected tokens to be saved, but none were. Transforms: {result.transforms_applied}"
     assert result.compression_ratio > 0.0
 
 
@@ -38,3 +46,4 @@ def test_bm25_relevance_scoring():
     
     assert scores[1] > scores[0]
     assert scores[1] > scores[2]
+    assert scores[1] > 0.0
